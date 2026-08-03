@@ -1,0 +1,5 @@
+.env
+*.pem
+*.key
+patroni.env
+*.crt
