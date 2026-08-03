@@ -1,0 +1,74 @@
+version: '3.9'
+
+# Production environment
+# `etcd` = overlay network shared with the Postgres/Citus (Patroni) stack.
+# Both networks below must already exist before deploying this file.
+networks:
+  etcd:
+    external: true
+    name: etcd
+  nginx-net:
+    external: true
+    name: nginx-net
+
+services:
+  metabase-db:
+    image: postgres:15
+    hostname: metabase-db
+    networks: [etcd, nginx-net]
+    environment:
+      POSTGRES_USER: metabase
+      POSTGRES_PASSWORD: "REPLACE_WITH_STRONG_SECRET"
+      POSTGRES_DB: metabase
+    volumes:
+      - /ssd-store/storage/data/metabase/pgdata:/var/lib/postgresql/data
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == <PROD_NODE_1>
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+    labels:
+      project: metabase
+      app: metabase-db
+
+  metabase:
+    image: metabase/metabase:latest
+    hostname: metabase
+    networks: [etcd, nginx-net]
+    # NOTE: no `ports:` block on purpose.
+    # Metabase is reached exclusively through the nginx reverse proxy over
+    # the shared overlay network(s). See ../nginx/metabase-server-block.prod.conf
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabase
+      MB_DB_PORT: 5432
+      MB_DB_USER: metabase
+      MB_DB_PASS: "REPLACE_WITH_STRONG_SECRET"
+      MB_DB_HOST: metabase-db
+      JAVA_TIMEZONE: "Asia/Tehran"
+    volumes:
+      - /ssd-store/storage/data/metabase/data:/metabase-data
+    depends_on:
+      - metabase-db
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == <PROD_NODE_1>
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    labels:
+      project: metabase
+      app: metabase
